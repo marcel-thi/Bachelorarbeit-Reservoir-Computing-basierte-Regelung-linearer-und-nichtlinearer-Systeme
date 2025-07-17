@@ -1,0 +1,62 @@
+function u = fcn(t)
+   
+     if t < 800
+         vorfaktor = 0.8;
+         additionsfaktor = 0.1;
+     elseif t< 1400
+         vorfaktor = 0.3;
+         additionsfaktor = 0.7;
+     elseif t < 1900
+         vorfaktor = 0.0;
+         additionsfaktor = 1.0;
+     elseif t < 2300
+         vorfaktor = 0.2;
+         additionsfaktor = 0.8;
+     elseif t < 2700
+         vorfaktor = 0.3;
+         additionsfaktor = 0.7;
+     elseif t < 3100
+         vorfaktor = 0.4;
+         additionsfaktor = 0.6;
+     elseif t < 3500
+         vorfaktor = 0.5;
+         additionsfaktor = 0.5;
+     elseif t < 3900
+         vorfaktor = 0.6;
+         additionsfaktor = 0.4;
+     else
+         vorfaktor = 0.7;
+         additionsfaktor = 0.3;
+     end
+ 
+     % Skalierung für die Ausgänge (z. B. maximale Durchflüsse)
+     p = [0.0001271; 0.0001286];
+ 
+     % Zeitdauer, wie lange ein zufälliger Wert gehalten wird [Sekunden]
+     hold_time = 5;
+ 
+     % Bestimme das aktuelle Intervall (z. B. Schrittindex)
+     step = floor(t / hold_time);
+ 
+     % Erzeuge deterministische Zufallszahlen pro Zeitintervall
+     val1 = rand_from_seed(step, 1);  % Zufallswert für Kanal 1
+     val2 = rand_from_seed(step, 2);  % Zufallswert für Kanal 2
+ 
+     % Skaliere in sinnvollen Bereich [0.1, 0.9]
+     u1 = additionsfaktor + vorfaktor * val1;
+     u2 = additionsfaktor + vorfaktor * val2;
+ 
+     % Ausgabe u mit physikalischer Skalierung
+     u = [u1; u2] .* p;
+ end
+ 
+ function r = rand_from_seed(seed, offset)
+     % Hilfsfunktion zur Erzeugung deterministischer Pseudozufallszahlen
+     % für festes Zeitintervall (damit Simulink reproduzierbar bleibt)
+ 
+     s = rng; % aktuellen Zufallszustand sichern
+     rng(seed * 100 + offset, 'twister'); % neuer Seed
+     r = rand; % zufällige Zahl [0, 1]
+     rng(s); % alten Zustand wiederherstellen
+ end
+
