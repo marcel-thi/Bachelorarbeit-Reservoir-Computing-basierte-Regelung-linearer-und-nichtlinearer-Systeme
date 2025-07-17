@@ -3,3 +3,5 @@ Dieses Repository enthält alle für meine Bachelorarbeit notwendigen Codeabschn
 
 
 Die ESN.m file enthält eine Klasse zur Implementierung von Echo-State-Networks mit leaky Integrator Neuronen.
+Die Trainingsdaten erstellen file enthält den Code der zur System Input Generierung der Trainingsdaten genutzt wurde.
+
