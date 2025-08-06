@@ -29,10 +29,11 @@ u = [vu1 , vu3];
 
 t = 1;%delay time im Realsystem auf 15 gestzt
 
-X_t = x(1:end-t,:);%aktuell gewähltes Delay 1
+%Berechnung eingang für das ESN und Zielwerte
+X_t = x(1:end-t,:);
 X_t_dt = x(1+t:end, :);
 
-%X_dot_t = (X_t - X_t_dt)/t;
+
 U_t = u(1:end-t,:);
 
 eingang = [X_t ,X_t_dt]';
@@ -42,7 +43,7 @@ target = U_t';
 
 
 
-%erstellen des ESN und festlegen der Parameter
+%erstellen des ESN und Parameter Bestimmung
 esn = ESN();
 esn.inputs = 4;
 esn.input_scaling = 0.85;
@@ -57,15 +58,13 @@ esn.use_washout = true;
 esn.use_bias = true;
 esn.bias = 0.8;
 esn.use_bias_out = true;
-esn.bias_out = 0.8;%bei tests hier keinen einfluss auf den mse gehabt => es würde reichen nur einen input bias zu haben
+esn.bias_out = 0.8;
 esn.initialize();
 
 states = esn.run(eingang);
 
 esn.train(target,states);
-%esn.complete_train(eingang,target);
-%esn.reset_state();%setzt state der neuronen auf 0 zurück
-load('last_state_ESN.mat');
+load('last_state_ESN.mat');%ein bereits aufgenommenen state verwenden, kann muss aber nicht vorallen wenn ein washout verwendet wird eher nicht notwendig
 esn.state = last_state_ESN; %ein state der neuronen aus der simulation mit washout kein Unterschied ohne großer unterschied
 
 %ausprobieren an test werten
