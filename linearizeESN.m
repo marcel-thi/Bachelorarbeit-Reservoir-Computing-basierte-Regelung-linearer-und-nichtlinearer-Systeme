@@ -1,4 +1,4 @@
-function [A_lin, B_lin] = linearizeESN(Wres, Win, xm, um, alpha)
+function [A_lin, B_lin] = linearizeESN(Wres, Win, xm, um, alpha)%hier ist alpha die Leakrate, Win die Eingangsmatris, Wre die Reservoirmatrix, xm die internen Zustände des ESN in ruhe, um die System zustände in ruhe
     % Anzahl der Neuronen
     N = size(Wres, 1);
     K = length(um);  % Anzahl der Eingänge
@@ -6,7 +6,8 @@ function [A_lin, B_lin] = linearizeESN(Wres, Win, xm, um, alpha)
     % Initialisieren
     A_lin = zeros(N, N);
     B_lin = zeros(N, K);  % Jetzt Matrix, nicht Vektor
-
+    
+    %Berechnung folgt der in der Bachelorarbeit angegebenen Quelle
     % Berechne z_m = Win * um + Wres * xm
     z_m = Win * um + Wres * xm;  % Größe N x 1
 
