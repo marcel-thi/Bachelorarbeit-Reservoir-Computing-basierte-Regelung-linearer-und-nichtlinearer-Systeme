@@ -16,7 +16,8 @@ classdef ESN < handle
         state %aktueller zustand der neuronen default startwert ist 0
         washout;%anzahl an ignorierten Datenpunkten default 50
         use_washout;%ob washput genutzt wird defalut true
-        use_bias;%ob bias genutzt werden sollen bei input und output
+        use_bias;%ob bias genutzt werden sollen bei input
+        use_bias_out;%ob bias auch in state zu output genutzt wird
     end
     methods(Access = public)
         
@@ -30,6 +31,7 @@ classdef ESN < handle
             self.spectral_radius = 0.9;
             self.bias = 1.0;
             self.use_bias = true;
+            self.use_bias_out = false;
             self.Win = [];
             self.Wres = [];
             self.Wout = [];
@@ -40,7 +42,7 @@ classdef ESN < handle
             
         end
         
-        function self = ESN()
+        function self = ESN()%aufrufen um alles mit default zu initialisieren
             self.default();
             %alles auf den default setzen
 
@@ -66,17 +68,17 @@ classdef ESN < handle
         function test_stabil(self)%betrachtung des spectralradius der effektiven matrix
             h = eigs((1-self.leak_rate)*eye(self.neuronen)+self.leak_rate*self.Wres);
             if h < 1
-                disp("ist stabil");
+                disp("Der Spectralradius der effektiven Matrix ist kleiner als 1, das ESN ist stabil");
             else
-                disp("ist nicht stabil");
+                disp("Der Spectralradius der effektiven Matrix ist größer als 1, das ESN ist nicht stabil");
             end
 
 
         end
-        function test_steuerbar(self)%hier noch nicht sicher, ob das so passt muss noch überprüft werden/in Literatur nochmal genauer recherschiert werden
+        function test_steuerbar(self)%hier wird die Steuerbarkeit anhand des linearen ESN getestet wie hier implementiert wird um x = 0; u= 0 getestet
             
             % Leaky Rate
-            alpha = self.leak_rate;  % Stelle sicher, dass alpha als Eigenschaft gesetzt ist
+            alpha = self.leak_rate;  
         
             % Effektive Dynamikmatrix
             A_eff = (1 - alpha) * eye(self.neuronen) + alpha * self.Wres;
@@ -103,10 +105,11 @@ classdef ESN < handle
             end
         end
 
-        function states = run(self,eingang)%berechnet Zustände im Reservoir
+        function states = run(self,eingang)%berechnet aktuelle Zustände im Reservoir
             T = length(eingang);
             x_n = self.state;%initialer zustand
             X = zeros(self.neuronen, T);
+            
             for t = 1:T
                 x_t = eingang(:,t);
                 if self.use_bias
@@ -125,23 +128,24 @@ classdef ESN < handle
             end
 
         end
-        function self = train(self,ziel,states)%trainiert die readout matrix
+        function self = train(self,ziel,states)%trainiert die readout matrix mit ridge regression(analytisch)
             if self.use_washout
                 target = ziel(:,self.washout+1:end);
             else
                 target = ziel;
             end
-            if self.use_bias
-                X_aug = [states;self.bias*ones(1,size(states,2))];
+            if self.use_bias_out
+                X_aug = [states;self.bias_out*ones(1,size(states,2))];
             else
                 X_aug = states;
             end
             self.Wout = target * X_aug'/(X_aug * X_aug' + self.reg * eye(size(X_aug,1)));
 
         end
-        function output = compute_output(self,eingang)%erstellt den ausgang des ESN zu einem Eingang
+        function output = compute_output(self,eingang)%erstellt den ausgang des ESN zu einem Eingang/nach dem training des ESN
             states = self.run(eingang);
-            if self.use_bias
+            
+            if self.use_bias_out
                 X_aug = [states;self.bias*ones(1,size(states,2))];
             else
                 X_aug = states;
@@ -159,7 +163,7 @@ classdef ESN < handle
                 end
                     fehler = mean((target-output).^2);
         end
-        function self = complete_train(self,eingang,target)
+        function self = complete_train(self,eingang,target)%etwas vereinfachtere Trainingsvariante/direkt vollständiges Training man erhält allerdings keine internen States zurück
             states = self.run(eingang);
             self.train(target,states);
         end
