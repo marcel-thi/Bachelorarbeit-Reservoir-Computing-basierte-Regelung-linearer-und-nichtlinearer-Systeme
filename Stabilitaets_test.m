@@ -1,13 +1,13 @@
 
-%%Arbeitspunkt
-xr1 =  0.25;
-xr2 =  0.2;
-xr3 =  0.15;
+%%Arbeitspunkt des kontinuierlichen nichtlinearen systems
+xr1 =  0.18;
+xr2 =  0.15;
+xr3 =  0.12;
 xR = [xr1;xr2;xr3];
-ur1 =  0.0001;
-ur3 =  0.0;
+ur1 =  5*10^-5;
+ur3 =  10^-4;
 uR = [ur1;ur3];
-
+T = 0.1;
 vxr1 = (xr1-0.31795)/-0.3314;
 vxr3 = (xr3-0.30988)/-0.33781;
 vxr = [vxr1;vxr3;vxr1;vxr3];
@@ -17,7 +17,7 @@ vxr = [vxr1;vxr3;vxr1;vxr3];
 
 
 
-%% Dreitank Linearisierung
+%% Dreitank Darstellung
 
 % 0. Parameter
 para.At = 0.0154;
@@ -31,33 +31,110 @@ para.Ts = 0.1;
 
 syms a10 a12 a23 a30I At Av g u1 u2 Ts
 x        = sym('x',[3,1]); % Zustandsvektor
-y        = sym('y',[2,1]); % Ausgangsvektor
-u        = sym('y',[2,1]); % Ausgangsvektor
+y        = sym('y',[3,1]); % Ausgangsvektor
+u        = sym('u',[2,1]); % Ausgangsvektor
 
 dx = [(u(1) - a12 * Av * sign(x(1) - x(2)) * sqrt(2*g*abs(x(1) - x(2))) - a10 * Av * sqrt(2*g*x(1))) / At;
     (a12 * Av * sign(x(1) - x(2)) * sqrt(2*g*abs(x(1) - x(2))) - a23 * Av * sign(x(2)-x(3)) * sqrt(2*g*abs(x(2)-x(3)))) / At;
     (u(2) + a23 * Av * sign(x(2)-x(3)) * sqrt(2*g*abs(x(2)-x(3))) - a30I * Av * sqrt(2*g*x(3))) / At];
 
-x_next = x + Ts * dx;
 
-% Systemmatrizen
-A = jacobian(x_next,x);
-b = jacobian(x_next,u);
+function dxdt = dreitank_model(x, u, para)
+    % Dreitankmodell: kontinuierliche Dynamik
+    % Eingabe:
+    %   x     - Zustände (3x1 Vektor)
+    %   u     - Eingänge (2x1 Vektor)
+    %   para  - Struktur mit Parametern
+    
+    % Auspacken der Parameter
+    At   = para.At;
+    Av   = para.Av;
+    a12  = para.a12;
+    a10  = para.a10;
+    g    = para.g;
+    a23  = para.a23;
+    a30I = para.a30I;
 
-A = subs(A,x,xR); 
-b = subs(b,x,xR);
+    % Zustandsgleichungen
+    dx1 = (u(1) - a12 * Av * sign(x(1) - x(2)) * sqrt(2*g*abs(x(1) - x(2))) ...
+                  - a10 * Av * sqrt(2*g*x(1))) / At;
+              
+    dx2 = (a12 * Av * sign(x(1) - x(2)) * sqrt(2*g*abs(x(1) - x(2))) ...
+                  - a23 * Av * sign(x(2)-x(3)) * sqrt(2*g*abs(x(2)-x(3)))) / At;
+              
+    dx3 = (u(2) + a23 * Av * sign(x(2)-x(3)) * sqrt(2*g*abs(x(2)-x(3))) ...
+                  - a30I * Av * sqrt(2*g*x(3))) / At;
 
-A = subs(A,u,uR); 
-b = subs(b,u,uR);
+    dxdt = [dx1; dx2; dx3];
+end
 
-para.u1R = ur1; % Definition des Arbeitspunkts, muss physikalisch sinnvoll sein 
-para.u2R = ur3;
-para_save = para; 
-syms_params = {At, Av, a12, a10, a23, a30I, g,Ts};
-para_values = {para.At, para.Av, para.a12, para.a10, para.a23, para.a30I, para.g,para.Ts};
 
-AN = double(subs(A, syms_params, para_values));
-bN = double(subs(b, syms_params, para_values));
+
+
+
+%% Diskrete Übergangsfunktion bestimmen mit vorwärts Euler
+simulate_step = @(x, u, T, para) ...
+    ode45_step(@(t, x_) dreitank_model(x_, u, para), x, T);
+
+function x_next = ode45_step(f, x0, T)
+    [~, x_out] = ode45(f, [0 T], x0);
+    x_next = x_out(end,:)';
+end
+
+
+
+
+%% Neuer Arbeitspunkt: numerische Bestimmung von xR mit f_d(xR, uR) = xR/Gleichung lösen
+
+% Funktion f_d wie ist diskretes nicht lineares Modell
+f_d = @(x, u) simulate_step(x, u, T, para);  % simulate_step wie vorher definiert
+
+% esn wird gesucht xR für f_fix(x) = f_d(x, uR) - x = 0
+f_fix = @(x) f_d(x, uR) - x;
+
+% Startwert xR des kontinuierlichen Systems
+xR_guess = xR;
+
+% fsolve zur Bestimmung des Fixpunkts
+options = optimoptions('fsolve','Display','iter','FunctionTolerance',1e-10);
+[xR_new, fval, exitflag] = fsolve(f_fix, xR_guess, options);
+
+if exitflag <= 0
+    warning('fsolve hat keinen gültigen Arbeitspunkt gefunden.');
+else
+    disp('Neuer Arbeitspunkt xR:');
+    disp(xR_new);
+end
+
+% neuer Arbeitspunkt festlegen
+xR = xR_new;
+vxr = [xR(1);xR(3);xR(1);xR(3)];
+
+ %% Numerische Linearisierung um Arbeitspunkt
+ delta = 1e-6;
+ n = length(xR); m = length(uR);
+ A_d = zeros(n);
+ B_d = zeros(n, m);
+ 
+ % A-Matrix/Dynamikmatrix bestimmen
+ for i = 1:n
+     dx = zeros(n,1); dx(i) = delta;
+     f1 = f_d(xR + dx, uR);
+     f2 = f_d(xR - dx, uR);
+     A_d(:,i) = (f1 - f2) / (2*delta);
+ end
+ 
+ % B-Matrix/Konstantematrix bestimmen
+ for i = 1:m
+     du = zeros(m,1); du(i) = delta;
+
+     f1 = f_d(xR, uR + du);
+     f2 = f_d(xR, uR - du);
+     B_d(:,i) = (f1 - f2) / (2*delta);
+ end
+
+
+
 
 %% Berechnung der linearisierten Matrizen für das ESN
 nutzung_esn;
@@ -88,60 +165,99 @@ alpha = 0.75;
 
 
 %%Berechnung geschlossener Regelkreis
-Wout = esn.Wout;
-if esn.use_bias && esn.use_bias_out == false
-    disp("mit input bias")
-    H = [1 0 0 0 0 0 ; 0 0 1 0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 0 ; 0 0 0 0 0 1]; 
-    A_tilde = [AN(1,1) AN(2,1) AN(3,1)  0 0 0; AN(1,2) AN(2,2) AN(3,2)  0 0 0; AN(1,3) AN(2,3) AN(3,3)  0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 0; 0 0 0 0 0 1];
-    B_tilde = [bN ; 0 0; 0 0; 0 0];
-    k1 = [1/-0.3314 0 0 0 0; 0 1/-0.33781 0 0 0; 0 0 1/-0.3314 0 0; 0 0 0 1/-0.33781 0; 0 0 0 0 1];% für umrechnung der Füllstände in volt bereich
-    k2 = [-0.31795; -0.30988 ; -0.31795; -0.30988;0];%für umrechnung der Füllstände in den volt bereich
+if esn.use_bias == false && esn.use_bias_out == false%hier sind die Zustände die Systemzustände + die Referenzwerte + ESN zustände
+    Wout = esn.Wout(1:2,1:100);
+
+    H = [1 0 0 0 0 ; 0 0 1 0 0 ; 0 0 0 1 0 ; 0 0 0 0 1 ]; 
+    A_tilde = [AN(1,1) AN(2,1) AN(3,1)  0 0 ; AN(1,2) AN(2,2) AN(3,2)  0 0 ; AN(1,3) AN(2,3) AN(3,3)  0 0 ; 0 0 0 1 0 ; 0 0 0 0 1];%Matrix des linearen Systems
+    B_tilde = [bN ; 0 0; 0 0]; %matrix des linearen Systems
+    k1 = [1/-0.3314 0 0 0; 0 1/-0.33781 0 0; 0 0 1/-0.3314 0 ; 0 0 0 1/-0.33781];% für umrechnung der Füllstände in volt bereich
+    k2 = [-0.31795; -0.30988 ; -0.31795; -0.30988];%für umrechnung der Füllstände in den volt bereich
     k3 = [16395 0 ; 0 15723];% für umrechnung der Pumpleistung in normal Bereich
     k4 = [1.0918 ; 1.0346];%für umrechnung der Pumpleistung in normal Bereich
-    D_tilde = k3 * Wout * D * k1 * H;
-    C_tilde = k3 * Wout * C;
-    E = k3 * Wout * D * k1 * k2 + k3*k4;
-elseif esn.use_bias && esn.use_bias_out
-    H = [1 0 0 0 0 0 ; 0 0 1 0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 0 ; 0 0 0 0 0 1]; 
-    A_tilde = [AN(1,1) AN(2,1) AN(3,1)  0 0 0; AN(1,2) AN(2,2) AN(3,2)  0 0 0; AN(1,3) AN(2,3) AN(3,3)  0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 0 ; 0 0 0 0 0 1];
-    B_tilde = [bn;0 0 ;0 0 ; 0 0];
-    k1 = [1/-0.3314 0 0 0 0; 0 1/-0.33781 0 0 0; 0 0 1/-0.3314 0 0; 0 0 0 1/-0.33781 0; 0 0 0 0 1];% für umrechnung der Füllstände in volt bereich
-    k2 = [-0.31795; -0.30988 ; -0.31795; -0.30988;0];%für umrechnung der Füllstände in den volt bereich
-    k3 = [16395 0 ; 0 15723];% für umrechnung der Pumpleistung in normal Bereich
-    k4 = [1.0918 ; 1.0346];%für umrechnung der Pumpleistung in normal Bereich
-    D_neu = [D;zeros(1,size(D,2))];
-    C_neu = [C; zeros(1,size(C,2))];
-    C_neu = [C_neu, zeros(1,size(C_neu,1))'];
-    C_neu(size(C_neu,1),size(C_neu,2)) = 1;
+    D_neu = D(1:100, 1:4);
+    C_neu = C(1:100,1:100);
     D_tilde = k3 * Wout * D_neu * k1 * H;
     C_tilde = k3 * Wout * C_neu;
     E = k3 * Wout * D_neu * k1 * k2 + k3*k4;
     D = D_neu;
     C = C_neu;
-else
-    H = [1 0 0 0 0 ;0 0 1 0 0 ; 0 0 0 1 0; 0 0 0 0 1];
-    disp("ohne inpiut bias")
-    A_tilde = [AN(1,1) AN(2,1) AN(3,1)  0 0 ; AN(1,2) AN(2,2) AN(3,2)  0 0 ; AN(1,3) AN(2,3) AN(3,3)  0 0 ; 0 0 0 1 0; 0 0 0 0 1];
-    B_tilde = [bN ; 0 0; 0 0];
-    k1 = [1/-0.3314 0 0 0 ; 0 1/-0.33781 0 0 ; 0 0 1/-0.3314 0 ; 0 0 0 1/-0.33781 ];% für umrechnung der Füllstände in volt bereich
+elseif esn.use_bias && esn.use_bias_out == false%hier wird der input bias genutzt dementsprechend sind die Zustände die Systemzustände + die Referenzwerte + Inputbias + ESN zustände
+    Wout = esn.Wout(1:2,1:100);
+
+    H = [1 0 0 0 0 0; 0 0 1 0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 0; 0 0 0 0 0 1]; 
+    A_tilde = [A_d(1,1) A_d(2,1) A_d(3,1)  0 0 0; A_d(1,2) A_d(2,2) A_d(3,2)  0 0 0; A_d(1,3) A_d(2,3) A_d(3,3)  0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 0; 0 0 0 0 0 1];
+    B_tilde = [B_d;0 0;0 0;0 0];
+    k1 = [1/-0.3314 0 0 0 0; 0 1/-0.33781 0 0 0; 0 0 1/-0.3314 0 0;0 0 0 1/-0.33781 0; 0 0 0 0 1];% für umrechnung der Füllstände in volt bereich
+    k2 = [-0.31795; -0.30988;-0.31795; -0.30988;0];%für umrechnung der Füllstände in den volt bereich
+    k3 = [1/16395 0 ; 0 1/15723];% für umrechnung der Pumpleistung in normal Bereich
+    k4 = [1.0918 ; 1.0346];%für umrechnung der Pumpleistung in normal Bereich
+    D_neu = D(1:100, 1:5);
+    C_neu = C(1:100,1:100);
+    D_tilde = k3 * Wout * D_neu * k1 * H;
+    C_tilde = k3 * Wout * C_neu;
+    E = k3 * Wout * D_neu * k1 * k2 + k3*k4;
+    D = D_neu;
+    C = C_neu;
+    
+elseif esn.use_bias && esn.use_bias_out %hier wird angenommen in und ouput bias werden genutzt, zustände wie im vorherigen Fall Zustände sind ESN zustände + bias in + bias out + System zustände + Referenzwerte
+    Wout = esn.Wout(1:2,1:101);
+
+    H = [1 0 0 0 0 0; 0 0 1 0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 0; 0 0 0 0 0 1]; 
+    A_tilde = [A_d(1,1) A_d(2,1) A_d(3,1)  0 0 0; A_d(1,2) A_d(2,2) A_d(3,2)  0 0 0; A_d(1,3) A_d(2,3) A_d(3,3)  0 0 0; 0 0 0 1 0 0; 0 0 0 0 1 0; 0 0 0 0 0 1];
+    B_tilde = [B_d;0 0;0 0;0 0];
+    k1 = [1/-0.3314 0 0 0 0; 0 1/-0.33781 0 0 0; 0 0 1/-0.3314 0 0;0 0 0 1/-0.33781 0; 0 0 0 0 1];% für umrechnung der Füllstände in volt bereich
+    k2 = [-0.31795; -0.30988;-0.31795; -0.30988;0];%für umrechnung der Füllstände in den volt bereich
+    k3 = [1/16395 0 ; 0 1/15723];% für umrechnung der Pumpleistung in normal Bereich
+    k4 = [1.0918 ; 1.0346];%für umrechnung der Pumpleistung in normal Bereich
+    D_neu = zeros(101,5);
+    D_neu(1:100,1:5) = D(1:100,1:5);
+    C_neu = zeros(101);
+    C_neu(1:100, 1:100) = C(1:100, 1:100);
+    C_neu(end, end) = 1;
+    D_tilde = k3 * Wout * D_neu * k1 * H;
+    C_tilde = k3 * Wout * C_neu;
+    E = k3 * Wout * D_neu * k1 * k2 + k3*k4;
+    D = D_neu;
+    C = C_neu;
+else % es wird nue ein output bias genutzt Zustände sind System Zustände + Referenz + output bias + ESN Zustände
+    Wout = esn.Wout(1:2,1:101);
+
+    H = [1 0 0 0 0 ; 0 0 1 0 0 ; 0 0 0 1 0 ; 0 0 0 0 1 ]; 
+    A_tilde = [AN(1,1) AN(2,1) AN(3,1)  0 0 ; AN(1,2) AN(2,2) AN(3,2)  0 0 ; AN(1,3) AN(2,3) AN(3,3)  0 0 ; 0 0 0 1 0 ; 0 0 0 0 1];%Matrix des linearen Systems
+    B_tilde = [bN ; 0 0; 0 0]; %matrix des linearen Systems
+    k1 = [1/-0.3314 0 0 0; 0 1/-0.33781 0 0; 0 0 1/-0.3314 0 ; 0 0 0 1/-0.33781];% für umrechnung der Füllstände in volt bereich
     k2 = [-0.31795; -0.30988 ; -0.31795; -0.30988];%für umrechnung der Füllstände in den volt bereich
     k3 = [16395 0 ; 0 15723];% für umrechnung der Pumpleistung in normal Bereich
     k4 = [1.0918 ; 1.0346];%für umrechnung der Pumpleistung in normal Bereich
-    D_tilde = k3 * Wout * D * k1 * H;
-    C_tilde = k3 * Wout * C;
-    E = k3 * Wout * D * k1 * k2 + k3*k4;
+    D_neu = D(1:100, 1:4);
+    D_neu = [D_neu;zeros(size(D_neu,2))];
+    C_neu = zeros(101);
+    C_neu(1:100, 1:100) = C(1:100, 1:100);
+    C_neu(end, end) = 1;
+    D_tilde = k3 * Wout * D_neu * k1 * H;
+    C_tilde = k3 * Wout * C_neu;
+    E = k3 * Wout * D_neu * k1 * k2 + k3*k4;
+    D = D_neu;
+    C = C_neu;
 end
-
-
+%falls wie auch getest nur die Dynamikmatrix ohne Referenz und ohne Bias
+%getestet werden soll für ein System mit Bias und Referenz müssen
+%Änderungen an A_tilde,B_tilde,C_neu,D_neu vorgenommen werden diese sollten
+%aber auch einem seperatem code entnommen werden können der nur diesen Fall
+%beinhaltet, dass man zwar biase nutzt diese aber nicht genutzt werden,
+%hier kam das ergebnis, dass die nutzung von bias und referenz in der
+%Dynamik des geschlossenen Regelkreises die neuen Eigenwerte alle auf eins
+%liegen
 
 
 % Erste Blockreihe
-block11 = A_tilde + B_tilde * D_tilde;  % Größe z.B. 5x5
-block12 = B_tilde * C_tilde;            % Größe z.B. 5x2
+block11 = A_tilde + B_tilde * D_tilde; 
+block12 = B_tilde * C_tilde;      
 
 % Zweite Blockreihe
-block21 = D * k1 * H;                       % z.B. 2x5
-block22 = C;                            % z.B. 2x2
+block21 = D * k1 * H;                       
+block22 = C;    
 
 % Gesamte Matrix
 Matrix = [block11, block12;
@@ -151,5 +267,6 @@ Matrix = [block11, block12;
 eigenvals = eigs(Matrix);
 
 magnitudes = abs(eigenvals);
-
+%hier noch einfügen erst ganz normale ridge regression die matrix wird dann
+%als start wert benutzt
 
