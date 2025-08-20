@@ -9,6 +9,5 @@ Dieses Repository enthält alle für meine Bachelorarbeit notwendigen Codeabschn
 - nutzung_ESN.m ist der Code der für das Erstellen der ESN genutzt wurde (done)
 - Trainingsdaten erstellen enthält den Code der genutzt wurde zur Erstellung der hochwertigen Trainingsdaten (done)
 - die hochwertigen Trainigsdaten befinden sich in daten_simulation_v13.dat, die fehlerhaften Trainingsdaten in daten_simulation_v5 (done)
-- beeinflussung_ew.m ist der Code zur Berechnung der Ausgangsmatrix während man die Eigenwerte des geschlossenen Regelkreises beeinflusst
-- 
+- eigenwerte_ohnenb.m ist der Code zur Berechnung der Ausgangsmatrix während man die Eigenwerte des geschlossenen Regelkreises beeinflusst
 
